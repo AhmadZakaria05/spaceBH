@@ -209,6 +209,25 @@
             box-shadow: 0 0 10px #0af;
         }
 
+        select {
+            width: 100%;
+            margin-top: 8px;
+            background: rgba(10, 12, 18, 0.9);
+            color: #0af;
+            border: 1px solid rgba(0, 170, 255, 0.4);
+            padding: 8px;
+            border-radius: 4px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 12px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        select option {
+            background: rgba(10, 12, 18, 0.9);
+            color: #0af;
+        }
+
         .toggle-row {
             display: flex;
             align-items: center;
@@ -441,29 +460,53 @@
                 <button class="toggle-panel-btn" onclick="togglePanel('controls-panel', this)">−</button>
             </div>
             <div class="panel-content">
-                <label>Mass (M) <input type="range" id="param-mass" min="0.5" max="3.0" step="0.1" value="1.0"></label>
+                <label>Mass (M) <input type="range" id="param-mass" min="0.5" max="3.0" step="0.1" value="1.2"></label>
                 <label>Kerr Spin (a) <input type="range" id="param-spin" min="0.0" max="0.99" step="0.01"
-                        value="0.95"></label>
+                        value="0.92"></label>
                 <label>Global Energy (T0) <input type="range" id="param-temp" min="0.1" max="3.0" step="0.05"
-                        value="1.0"></label>
+                        value="2.8"></label>
                 <label>Disk Density <input type="range" id="param-density" min="0.0" max="3.0" step="0.1"
-                        value="1.5"></label>
+                        value="2.8"></label>
                 <label>Contrast Sharpness (γ) <input type="range" id="param-gamma" min="1.0" max="6.0" step="0.1"
-                        value="3.0"></label>
+                        value="1.6"></label>
                 <label>Radial Falloff (n) <input type="range" id="param-falloff" min="1.0" max="5.0" step="0.1"
-                        value="2.5"></label>
+                        value="2.3"></label>
                 <label>Doppler Asymmetry (p) <input type="range" id="param-doppler" min="1.0" max="5.0" step="0.1"
-                        value="3.0"></label>
+                        value="3.1"></label>
                 <label>Global Exposure <input type="range" id="param-exposure" min="0.1" max="5.0" step="0.1"
-                        value="1.5"></label>
+                        value="1.4"></label>
                 <label>Flow Speed <input type="range" id="param-flowSpeed" min="0.0" max="5.0" step="0.1"
-                        value="1.0"></label>
+                        value="1.1"></label>
                 <label>Flow Intensity <input type="range" id="param-flowIntensity" min="0.0" max="1.5" step="0.05"
-                        value="0.5"></label>
+                        value="0.85"></label>
                 <label>Gravitational Lensing <input type="range" id="param-lensing" min="0.0" max="2.0" step="0.1"
                         value="1.0"></label>
                 <label>Background Star Density <input type="range" id="param-stars" min="0.0" max="10.0" step="0.1"
-                        value="6.0"></label>
+                        value="1.0"></label>
+
+                <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+
+                    <label>Audio Mode
+                        <select id="param-audioMode">
+                            <option value="cinematic" selected>Cinematic</option>
+                            <option value="real">Realistic</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </label>
+
+                    <!-- Cinematic Volume -->
+                    <label id="cinematic-volume">
+                        Cinematic Volume
+                        <input type="range" id="param-cinematicVolume" min="0.0" max="1.0" step="0.01" value="0.5">
+                    </label>
+
+                    <!-- Real Volume -->
+                    <label id="real-volume" style="display:none;">
+                        Realistic Volume
+                        <input type="range" id="param-realVolume" min="0.0" max="1.0" step="0.01" value="0.5">
+                    </label>
+
+                </div>
 
                 <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
                     <label class="toggle-row"><input type="checkbox" id="toggle-ring" checked> Show Photon Ring</label>
@@ -806,18 +849,18 @@
             fov: { value: Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) },
             cameraDist: { value: 0 },
 
-            mass: { value: 1.0 },
-            spin: { value: 0.95 },
-            diskTemp: { value: 1.0 },
-            diskDensity: { value: 1.5 },
+            mass: { value: 1.2 },
+            spin: { value: 0.92 },
+            diskTemp: { value: 2.8 },
+            diskDensity: { value: 2.8 },
             lensingStrength: { value: 1.0 },
             starDensity: { value: 6.0 },
-            diskGamma: { value: 3.0 },
-            diskFalloff: { value: 2.5 },
-            dopplerPower: { value: 3.0 },
-            exposure: { value: 1.5 },
-            flowSpeed: { value: 1.0 },
-            flowIntensity: { value: 0.5 },
+            diskGamma: { value: 1.6 },
+            diskFalloff: { value: 2.3 },
+            dopplerPower: { value: 3.1 },
+            exposure: { value: 1.4 },
+            flowSpeed: { value: 1.1 },
+            flowIntensity: { value: 0.85 },
 
             showPhotonRing: { value: true },
             showAccretionDisk: { value: true },
@@ -871,6 +914,102 @@
         bindToggle('toggle-ring', 'showPhotonRing');
         bindToggle('toggle-disk', 'showAccretionDisk');
         bindToggle('toggle-jets', 'showJets');
+
+        // 2. 🔊 AUDIO SYSTEM (JS)
+        let cinematicAudio = null;
+        let realAudio = null;
+        let currentAudio = null;
+
+        function loadAudio(type) {
+            if (type === 'cinematic') {
+                if (!cinematicAudio) {
+                    cinematicAudio = new Audio('interstellarShort.mp3');
+                    cinematicAudio.loop = true;
+                }
+                return cinematicAudio;
+            }
+
+            if (type === 'real') {
+                if (!realAudio) {
+                    realAudio = new Audio();
+                    realAudio.src = 'shortblackhole.m4a';
+
+                    realAudio.onerror = () => {
+                        realAudio.src = 'shortblackhole.mp3';
+                    };
+
+                    realAudio.loop = true;
+                }
+                return realAudio;
+            }
+        }
+
+        // 3. 🔄 MODE SWITCHING + UI LOGIC
+        const modeSelect = document.getElementById('param-audioMode');
+
+        const cinematicSlider = document.getElementById('cinematic-volume');
+        const realSlider = document.getElementById('real-volume');
+
+        modeSelect.addEventListener('change', () => {
+
+            // وقف الصوت الحالي
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+
+            const mode = modeSelect.value;
+
+            // إخفاء/إظهار السلايدرز
+            cinematicSlider.style.display = 'none';
+            realSlider.style.display = 'none';
+
+            if (mode === 'off') {
+                currentAudio = null;
+                return;
+            }
+
+            if (mode === 'cinematic') {
+                cinematicSlider.style.display = 'block';
+                currentAudio = loadAudio('cinematic');
+            }
+
+            if (mode === 'real') {
+                realSlider.style.display = 'block';
+                currentAudio = loadAudio('real');
+            }
+
+            if (currentAudio) {
+                currentAudio.play().catch(e => console.log("Audio play error:", e));
+            }
+        });
+
+        // 4. 🎚️ VOLUME CONTROL (SEPARATE)
+        document.getElementById('param-cinematicVolume').addEventListener('input', (e) => {
+            if (cinematicAudio) {
+                cinematicAudio.volume = parseFloat(e.target.value);
+            }
+        });
+
+        document.getElementById('param-realVolume').addEventListener('input', (e) => {
+            if (realAudio) {
+                realAudio.volume = parseFloat(e.target.value);
+            }
+        });
+
+        // Initialize default audio on first user interaction to bypass autoplay restrictions
+        document.body.addEventListener('click', () => {
+            if (!currentAudio && modeSelect.value !== 'off') {
+                currentAudio = loadAudio(modeSelect.value);
+                if (currentAudio) {
+                    if (modeSelect.value === 'cinematic') {
+                        currentAudio.volume = parseFloat(document.getElementById('param-cinematicVolume').value);
+                    } else if (modeSelect.value === 'real') {
+                        currentAudio.volume = parseFloat(document.getElementById('param-realVolume').value);
+                    }
+                    currentAudio.play().catch(e => console.log("Audio play error:", e));
+                }
+            }
+        }, { once: true });
 
         // Scientific Overlay
         const overlayContainer = document.getElementById('scientific-overlay');
