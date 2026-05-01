@@ -442,12 +442,13 @@
             </div>
             <div class="panel-content">
                 <label>Mass (M) <input type="range" id="param-mass" min="0.5" max="3.0" step="0.1" value="1.0"></label>
-                <label>Kerr Spin (a) <input type="range" id="param-spin" min="0.0" max="0.99" step="0.01"
-                        value="0.95"></label>
-                <label>Disk Temperature <input type="range" id="param-temp" min="0.0" max="1.0" step="0.01"
-                        value="0.7"></label>
-                <label>Disk Density <input type="range" id="param-density" min="0.0" max="3.0" step="0.1"
-                        value="1.5"></label>
+                <label>Kerr Spin (a) <input type="range" id="param-spin" min="0.0" max="0.99" step="0.01" value="0.95"></label>
+                <label>Global Energy (T0) <input type="range" id="param-temp" min="0.1" max="3.0" step="0.05" value="1.0"></label>
+                <label>Disk Density <input type="range" id="param-density" min="0.0" max="3.0" step="0.1" value="1.5"></label>
+                <label>Contrast Sharpness (γ) <input type="range" id="param-gamma" min="1.0" max="6.0" step="0.1" value="3.0"></label>
+                <label>Radial Falloff (n) <input type="range" id="param-falloff" min="1.0" max="5.0" step="0.1" value="2.5"></label>
+                <label>Doppler Asymmetry (p) <input type="range" id="param-doppler" min="1.0" max="5.0" step="0.1" value="3.0"></label>
+                <label>Global Exposure <input type="range" id="param-exposure" min="0.1" max="5.0" step="0.1" value="1.5"></label>
                 <label>Gravitational Lensing <input type="range" id="param-lensing" min="0.0" max="2.0" step="0.1"
                         value="1.0"></label>
                 <label>Background Star Density <input type="range" id="param-stars" min="0.0" max="10.0" step="0.1"
@@ -455,10 +456,12 @@
 
                 <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
                     <label class="toggle-row"><input type="checkbox" id="toggle-ring" checked> Show Photon Ring</label>
-                    <label class="toggle-row"><input type="checkbox" id="toggle-disk" checked> Show Accretion Disk</label>
+                    <label class="toggle-row"><input type="checkbox" id="toggle-disk" checked> Show Accretion
+                        Disk</label>
                     <label class="toggle-row"><input type="checkbox" id="toggle-jets" checked> Show Relativistic
                         Jets</label>
-                    <label class="toggle-row"><input type="checkbox" id="toggle-overlay"> Show Scientific Overlay</label>
+                    <label class="toggle-row"><input type="checkbox" id="toggle-overlay"> Show Scientific
+                        Overlay</label>
                 </div>
 
                 <button id="btn-approach">APPROACH EVENT HORIZON</button>
@@ -511,6 +514,11 @@
         uniform float diskDensity;
         uniform float lensingStrength;
         uniform float starDensity;
+        
+        uniform float diskGamma;
+        uniform float diskFalloff;
+        uniform float dopplerPower;
+        uniform float exposure;
 
         uniform bool showPhotonRing;
         uniform bool showAccretionDisk;
@@ -532,6 +540,31 @@
                            mix(hash(i + vec3(0.0,1.0,0.0)), hash(i + vec3(1.0,1.0,0.0)), f.x), f.y),
                        mix(mix(hash(i + vec3(0.0,0.0,1.0)), hash(i + vec3(1.0,0.0,1.0)), f.x),
                            mix(hash(i + vec3(0.0,1.0,1.0)), hash(i + vec3(1.0,1.0,1.0)), f.x), f.y), f.z);
+        }
+
+        // Shakura-Sunyaev temperature profile
+        float diskTemperature(float rD, float rs) {
+            float rIn = rs * 2.05;
+            if (rD <= rIn) return 0.0;
+            float x = rIn / rD;
+            float tNorm = pow(rD / rIn, -0.75) * pow(max(1.0 - sqrt(x), 0.0), 0.25);
+            return clamp(tNorm, 0.0, 1.0);
+        }
+
+        // Smooth analytical approximation of Blackbody Radiation
+        vec3 blackbodyColor(float t, float uDiskTemp) {
+            // Apply T0 global energy shift
+            float x = clamp(t * uDiskTemp, 0.0, 1.0);
+            
+            // Continuous polynomial curves mapping temperature to RGB
+            float r = 1.0 - exp(-x * 5.0);
+            float g = pow(x, 1.2) * 1.05;
+            float b = pow(max(x - 0.15, 0.0), 2.5) * 1.5;
+
+            // Slight dark baseline to prevent immediate black cutout
+            vec3 coldBase = vec3(0.01, 0.002, 0.0);
+            
+            return clamp(vec3(r, g, b) + coldBase * (1.0 - x), 0.0, 1.0);
         }
 
         vec3 getStarfield(vec3 dir) {
@@ -613,25 +646,52 @@
                         float densityBase = diskDensity * pow(isco / hitR, 2.0);
                         float intensity = densityBase * rings * (0.6 + 0.4 * n) * (0.8 + 0.2 * n2);
                         
+                        // --- NEW PARAMETRIC PHYSICS MODEL ---
+                        float tK = diskTemperature(hitR, rs);
+                        
+                        // --- T0 ENERGY MODEL FIX ---
+                        float L = pow(diskTemp, 4.0);
+                        float B = L / (1.0 + L);
+                        
+                        // Pass dampened T0 into blackbody to ensure it only has a minor color shift effect
+                        float colorT0 = 1.0 + (diskTemp - 1.0) * 0.15;
+                        vec3 baseColor = blackbodyColor(tK, colorT0);
+                        
+                        // Emission Intensity I(r) = T(r)^γ * r^(-n)
+                        float radB = pow(tK, diskGamma) * 4.5;
+                        radB *= pow(max(hitR / (rs * 2.05), 1.0), -diskFalloff);
+                        
+                        // Doppler Beaming B ∝ D^p
                         vec3 diskVelDir = normalize(vec3(-hitP.z, 0.0, hitP.x));
                         float diskVelMag = sqrt(M / hitR);
-                        float gamma = 1.0 / sqrt(1.0 - diskVelMag * diskVelMag);
+                        float diskGammaFactor = 1.0 / sqrt(1.0 - diskVelMag * diskVelMag);
                         float cosTheta = dot(v, diskVelDir);
-                        float doppler = 1.0 / (gamma * (1.0 - diskVelMag * cosTheta));
+                        float D = 1.0 / (diskGammaFactor * (1.0 - diskVelMag * cosTheta));
                         
-                        vec3 baseColor = mix(vec3(1.0, 0.1, 0.0), vec3(0.4, 0.8, 1.0), diskTemp);
-                        float beamedIntensity = intensity * pow(doppler, 3.0);
+                        // Clamp minimum visibility to ensure receding side is never pure black
+                        float beam = max(pow(D, dopplerPower), 0.05);
                         
-                        vec3 shiftedColor = baseColor;
-                        if (doppler > 1.0) shiftedColor = mix(shiftedColor, vec3(0.9, 0.95, 1.0), min(doppler - 1.0, 1.0));
-                        else shiftedColor = mix(shiftedColor, vec3(0.5, 0.05, 0.0), min(1.0 - doppler, 1.0));
+                        vec3 diskColRaw = baseColor * radB * beam * intensity;
                         
-                        float alpha = smoothstep(outerDisk, outerDisk - 4.0, hitR) * smoothstep(isco, isco + 0.5, hitR);
-                        alpha = clamp(alpha * diskDensity, 0.0, 1.0);
+                        // Primary perceptual emission (driven by B)
+                        vec3 primaryEmission = diskColRaw * B * 2.5;
+                        // Secondary physical bloom emission (driven by L)
+                        vec3 bloomEmission = diskColRaw * L * 0.5;
                         
-                        vec3 diskCol = shiftedColor * beamedIntensity * alpha;
-                        col += diskCol * transmittance;
-                        transmittance *= (1.0 - alpha * 0.8); // allow some light through
+                        // Gentle Falloff Alpha
+                        float alpha = smoothstep(isco, isco + 0.8 * rs, hitR) * smoothstep(outerDisk, outerDisk - 3.0 * rs, hitR);
+                        float rNorm = clamp((hitR - isco) / (outerDisk - isco), 0.0, 1.0);
+                        float outerFade = 1.0 - smoothstep(0.65, 1.0, rNorm) * 0.85;
+                        alpha *= outerFade;
+                        
+                        // Softer additive compositing
+                        float safeA = clamp(alpha * diskDensity, 0.0, 0.92);
+                        float mixFactor = safeA * 0.88;
+                        
+                        col = col * (1.0 - mixFactor * transmittance) + primaryEmission * mixFactor * transmittance;
+                        col += bloomEmission * 0.22 * transmittance; // bloom strictly driven by T0 energy
+                        
+                        transmittance *= (1.0 - mixFactor);
                     }
                 }
                 
@@ -675,7 +735,7 @@
                 
                 if (showPhotonRing) {
                     float pr = smoothstep(M * 3.2, M * 3.0, minR); 
-                    col += vec3(1.0, 0.6, 0.2) * pr * 1.5 * transmittance;
+                    col += vec3(1.0, 0.7, 0.3) * pr * 2.0 * transmittance;
                 }
             }
             
@@ -686,7 +746,7 @@
                 col = mix(col, col * vec3(1.0, 0.3, 0.1), danger * 0.8);
             }
             
-            float exposure = 1.5;
+            // 'exposure' is now a uniform
             col = vec3(1.0) - exp(-col * exposure);
             col = pow(col, vec3(1.0 / 2.2));
             
@@ -726,10 +786,14 @@
 
             mass: { value: 1.0 },
             spin: { value: 0.95 },
-            diskTemp: { value: 0.7 },
+            diskTemp: { value: 1.0 },
             diskDensity: { value: 1.5 },
             lensingStrength: { value: 1.0 },
             starDensity: { value: 6.0 },
+            diskGamma: { value: 3.0 },
+            diskFalloff: { value: 2.5 },
+            dopplerPower: { value: 3.0 },
+            exposure: { value: 1.5 },
 
             showPhotonRing: { value: true },
             showAccretionDisk: { value: true },
@@ -768,6 +832,10 @@
         bindSlider('param-density', 'diskDensity');
         bindSlider('param-lensing', 'lensingStrength');
         bindSlider('param-stars', 'starDensity');
+        bindSlider('param-gamma', 'diskGamma');
+        bindSlider('param-falloff', 'diskFalloff');
+        bindSlider('param-doppler', 'dopplerPower');
+        bindSlider('param-exposure', 'exposure');
 
         const bindToggle = (id, uniformKey) => {
             document.getElementById(id).addEventListener('change', e => {
@@ -848,27 +916,71 @@
         }
 
         function updateTelemetry() {
-            const dist = camera.position.length();
-            const M = 0.5 * uniforms.mass.value;
-            const rs = uniforms.mass.value;
+            // Inputs: Physical Constants
+            const G = 6.67430e-11;
+            const c = 299792458;
+            const M_solar = 1.989e30;
 
-            const r_rs = dist / rs;
-            document.getElementById('tel-dist').innerText = r_rs.toFixed(2) + " rₛ";
+            // Assume a Gargantua-like supermassive black hole scale (100 million solar masses)
+            // mapping the normalized slider value to real kilograms.
+            const M = uniforms.mass.value * 1e8 * M_solar;
 
-            if (dist <= rs * 1.05) {
-                document.getElementById('tel-esc').innerText = "> 99% c";
-                document.getElementById('tel-time').innerText = "Infinite";
-                document.getElementById('tel-orbit').innerText = "--";
-            } else {
-                const v_esc = Math.sqrt(rs / dist) * 100;
-                document.getElementById('tel-esc').innerText = v_esc.toFixed(1) + "% c";
+            // Step 1 — Compute Schwarzschild Radius (meters)
+            const rs = (2.0 * G * M) / (c * c);
 
-                const timeDilation = 1.0 / Math.sqrt(1.0 - rs / dist);
-                document.getElementById('tel-time').innerText = timeDilation.toFixed(2) + "x";
+            // Map the WebGL scene distance to real physical distance
+            const r_scene = camera.position.length();
+            const rs_scene = uniforms.mass.value;
 
-                const period = 2 * Math.PI * Math.sqrt(Math.pow(dist, 3) / M);
-                document.getElementById('tel-orbit').innerText = period.toFixed(1) + " s";
+            // Step 2 — Normalized Distance
+            const r_norm = r_scene / rs_scene;
+            const r = r_norm * rs; // Real physical distance in meters
+
+            // Safety clamp slightly above rs to avoid division by zero or NaN
+            const r_safe = Math.max(r, rs * 1.001);
+
+            // Step 3 — Escape Velocity
+            const v = Math.sqrt((2 * G * M) / r_safe);
+            const v_c = v / c;
+            const escapeVelocityPercent = v_c * 100;
+
+            // Step 4 — Time Dilation
+            const dilation = 1.0 / Math.sqrt(1.0 - (rs / r_safe));
+
+            // Step 5 — Orbital Period
+            const T = 2 * Math.PI * Math.sqrt((r_safe * r_safe * r_safe) / (G * M));
+            let formattedPeriod = T.toFixed(1) + " s";
+            if (T >= 3600) {
+                const hours = Math.floor(T / 3600);
+                const mins = Math.floor((T % 3600) / 60);
+                formattedPeriod = `${hours}h ${mins}m`;
+            } else if (T >= 60) {
+                const mins = Math.floor(T / 60);
+                const secs = Math.floor(T % 60);
+                formattedPeriod = `${mins}m ${secs}s`;
             }
+
+            // Step 6 — Special Regions
+            let label = "";
+            if (r <= rs * 1.001) {
+                label = " (Event Horizon)";
+            } else if (Math.abs(r - 1.5 * rs) < 0.1 * rs) {
+                label = " (Photon Sphere Region)";
+            } else if (r < 3 * rs) {
+                label = " (Inside ISCO - Unstable Orbit)";
+            }
+
+            // Step 7 — UI Output Format
+            const distText = r_norm.toFixed(2) + " rₛ" + label;
+            const escText = (r <= rs * 1.001) ? "> 99.9% of c" : escapeVelocityPercent.toFixed(1) + "% of c";
+            const timeText = (r <= rs * 1.001) ? "Horizon Limit" : dilation.toFixed(2) + "×";
+            const orbitText = (r <= rs * 1.001) ? "--" : formattedPeriod;
+
+            // Update DOM
+            document.getElementById('tel-dist').innerText = distText;
+            document.getElementById('tel-esc').innerText = escText;
+            document.getElementById('tel-time').innerText = timeText;
+            document.getElementById('tel-orbit').innerText = orbitText;
         }
 
         // Approach Mode
