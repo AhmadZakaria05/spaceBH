@@ -442,13 +442,24 @@
             </div>
             <div class="panel-content">
                 <label>Mass (M) <input type="range" id="param-mass" min="0.5" max="3.0" step="0.1" value="1.0"></label>
-                <label>Kerr Spin (a) <input type="range" id="param-spin" min="0.0" max="0.99" step="0.01" value="0.95"></label>
-                <label>Global Energy (T0) <input type="range" id="param-temp" min="0.1" max="3.0" step="0.05" value="1.0"></label>
-                <label>Disk Density <input type="range" id="param-density" min="0.0" max="3.0" step="0.1" value="1.5"></label>
-                <label>Contrast Sharpness (γ) <input type="range" id="param-gamma" min="1.0" max="6.0" step="0.1" value="3.0"></label>
-                <label>Radial Falloff (n) <input type="range" id="param-falloff" min="1.0" max="5.0" step="0.1" value="2.5"></label>
-                <label>Doppler Asymmetry (p) <input type="range" id="param-doppler" min="1.0" max="5.0" step="0.1" value="3.0"></label>
-                <label>Global Exposure <input type="range" id="param-exposure" min="0.1" max="5.0" step="0.1" value="1.5"></label>
+                <label>Kerr Spin (a) <input type="range" id="param-spin" min="0.0" max="0.99" step="0.01"
+                        value="0.95"></label>
+                <label>Global Energy (T0) <input type="range" id="param-temp" min="0.1" max="3.0" step="0.05"
+                        value="1.0"></label>
+                <label>Disk Density <input type="range" id="param-density" min="0.0" max="3.0" step="0.1"
+                        value="1.5"></label>
+                <label>Contrast Sharpness (γ) <input type="range" id="param-gamma" min="1.0" max="6.0" step="0.1"
+                        value="3.0"></label>
+                <label>Radial Falloff (n) <input type="range" id="param-falloff" min="1.0" max="5.0" step="0.1"
+                        value="2.5"></label>
+                <label>Doppler Asymmetry (p) <input type="range" id="param-doppler" min="1.0" max="5.0" step="0.1"
+                        value="3.0"></label>
+                <label>Global Exposure <input type="range" id="param-exposure" min="0.1" max="5.0" step="0.1"
+                        value="1.5"></label>
+                <label>Flow Speed <input type="range" id="param-flowSpeed" min="0.0" max="5.0" step="0.1"
+                        value="1.0"></label>
+                <label>Flow Intensity <input type="range" id="param-flowIntensity" min="0.0" max="1.5" step="0.05"
+                        value="0.5"></label>
                 <label>Gravitational Lensing <input type="range" id="param-lensing" min="0.0" max="2.0" step="0.1"
                         value="1.0"></label>
                 <label>Background Star Density <input type="range" id="param-stars" min="0.0" max="10.0" step="0.1"
@@ -519,6 +530,8 @@
         uniform float diskFalloff;
         uniform float dopplerPower;
         uniform float exposure;
+        uniform float flowSpeed;
+        uniform float flowIntensity;
 
         uniform bool showPhotonRing;
         uniform bool showAccretionDisk;
@@ -637,6 +650,15 @@
                         float angle = omega * time * 2.0;
                         mat2 rotDisk = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
                         vec2 hitXZ = hitP.xz * rotDisk;
+                        
+                        vec2 p_flow = hitXZ;
+                        float t_flow = time * flowSpeed;
+                        float angle_flow = atan(p_flow.y, p_flow.x);
+                        float radius_flow = length(p_flow);
+                        angle_flow += flowIntensity * sin(radius_flow * 3.0 - t_flow);
+                        p_flow.x = radius_flow * cos(angle_flow);
+                        p_flow.y = radius_flow * sin(angle_flow);
+                        hitXZ = p_flow;
                         
                         float rings = sin(hitR * 3.0) * 0.5 + 0.5;
                         rings = mix(1.0, rings, 0.4);
@@ -794,6 +816,8 @@
             diskFalloff: { value: 2.5 },
             dopplerPower: { value: 3.0 },
             exposure: { value: 1.5 },
+            flowSpeed: { value: 1.0 },
+            flowIntensity: { value: 0.5 },
 
             showPhotonRing: { value: true },
             showAccretionDisk: { value: true },
@@ -836,6 +860,8 @@
         bindSlider('param-falloff', 'diskFalloff');
         bindSlider('param-doppler', 'dopplerPower');
         bindSlider('param-exposure', 'exposure');
+        bindSlider('param-flowSpeed', 'flowSpeed');
+        bindSlider('param-flowIntensity', 'flowIntensity');
 
         const bindToggle = (id, uniformKey) => {
             document.getElementById(id).addEventListener('change', e => {
